@@ -1,0 +1,12 @@
+{
+  "name": "pi-kit",
+  "version": "0.1.0",
+  "description": "icejiang 的 pi 定制包：GLM 用量监控、流程制度 skills、prompt 模板、子代理定义",
+  "keywords": ["pi-package"],
+  "repository": "https://github.com/icejiang/pi-kit",
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts"]
+  }
+}
