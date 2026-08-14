@@ -132,17 +132,27 @@ function getSnapshot(agentDir: string, force = false): Promise<FetchResult> {
 	});
 }
 
-/** footer 常驻状态：GLM ⚡弫47%|86%（5h|周 剩余），剩余充足绿 / <30% 黄 / <15% 红 */
+/** footer 常驻状态：GLM ⚡余84%|77% M17/4k（5h|周 剩余 + MCP 已用/总次数） */
 function renderStatusText(res: FetchResult, fg: (color: string, text: string) => string): string | null {
 	if (!res.ok) return fg("dim", "GLM ?");
-	const { fiveHour, weekly } = res.snap;
+	const { fiveHour, weekly, mcp } = res.snap;
 	if (!fiveHour) return null;
 	const used = fiveHour.pct;
 	const remaining = Math.max(0, 100 - used);
 	const color = used >= WARN_THRESHOLD ? "error" : used >= 70 ? "warning" : "success";
 	const label = `⚡余${remaining}%`;
 	const weeklyPart = weekly ? `|${Math.max(0, 100 - weekly.pct)}%` : "";
-	return fg("dim", "GLM ") + fg(color, label) + fg("dim", weeklyPart);
+	let mcpPart = "";
+	if (mcp && mcp.total > 0) {
+		const mcpPct = (mcp.used / mcp.total) * 100;
+		const mcpColor = mcpPct >= 90 ? "error" : mcpPct >= 70 ? "warning" : "dim";
+		mcpPart = fg(mcpColor, ` M${fmtCompact(mcp.used)}/${fmtCompact(mcp.total)}`);
+	}
+	return fg("dim", "GLM ") + fg(color, label) + fg("dim", weeklyPart) + mcpPart;
+}
+
+function fmtCompact(n: number): string {
+	return n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
 }
 
 function renderDetail(res: FetchResult): string {
