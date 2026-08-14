@@ -137,6 +137,8 @@ async function withIndex(
 }
 
 export default function codegraphExtension(pi: ExtensionAPI) {
+	if (!findProjectRoot(process.cwd()).indexed) return;
+
 	// 1) 索引状态
 	pi.registerTool({
 		name: "codegraph_status",

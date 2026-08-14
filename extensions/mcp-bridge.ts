@@ -93,8 +93,9 @@ interface McpConn {
 	close(): void;
 }
 
-// 加载探针：验证 extension 代码是否被 reload 重新加载（排查后可删）
-console.error(`[mcp-bridge] extension 代码已加载 @ ${new Date().toISOString()}`);
+if (process.env.PI_MCP_BRIDGE === "1") {
+	console.error(`[mcp-bridge] extension loaded @ ${new Date().toISOString()}`);
+}
 
 // MCP server stderr → 日志文件（不进 TUI）
 function appendMcpLog(name: string, line: string): void {
@@ -520,6 +521,8 @@ function coerceArgs(a: unknown): Record<string, unknown> {
 // ----------------------------- 工具注册 -----------------------------
 
 export default function mcpBridgeExtension(pi: ExtensionAPI) {
+	if (process.env.PI_MCP_BRIDGE !== "1") return;
+
 	pi.registerTool({
 		name: "mcp_servers",
 		label: "MCP Servers",

@@ -172,6 +172,8 @@ function renderDetail(res: FetchResult): string {
 }
 
 export default function (pi: ExtensionAPI) {
+	if (process.env.PI_USAGE_STATS !== "1") return;
+
 	const agentDir = process.env.PI_AGENT_DIR ?? join(process.env.HOME ?? "~", ".pi", "agent");
 
 	// session 替换（/fork /new /resume /reload）走 dispose() 只 invalidate 不发

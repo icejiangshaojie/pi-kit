@@ -62,7 +62,42 @@ function updateGoal(status: Exclude<GoalStatus, "active">, reason?: string): str
 	return renderGoal(currentGoal);
 }
 
+function isGoal(value: unknown): value is Goal {
+	if (!value || typeof value !== "object") return false;
+	const goal = value as Partial<Goal>;
+	return (
+		typeof goal.objective === "string" &&
+		typeof goal.startedAt === "string" &&
+		(goal.status === "active" || goal.status === "complete" || goal.status === "blocked") &&
+		(goal.tokenBudget === undefined || (typeof goal.tokenBudget === "number" && goal.tokenBudget > 0)) &&
+		(goal.reason === undefined || typeof goal.reason === "string")
+	);
+}
+
+function publishGoal(pi: ExtensionAPI) {
+	pi.sendMessage({
+		customType: "goal",
+		content: `[Session goal]\n${renderGoal(currentGoal)}`,
+		display: false,
+		details: { goal: currentGoal },
+	});
+}
+
+function restoreGoal(entries: unknown[]) {
+	for (let index = entries.length - 1; index >= 0; index -= 1) {
+		const entry = entries[index] as { type?: unknown; customType?: unknown; details?: { goal?: unknown } } | undefined;
+		if (entry?.type !== "custom_message" || entry.customType !== "goal") continue;
+		currentGoal = entry.details?.goal === null ? null : isGoal(entry.details?.goal) ? entry.details.goal : null;
+		return;
+	}
+	currentGoal = null;
+}
+
 export default function (pi: ExtensionAPI) {
+	pi.on("session_start", (_event, ctx) => {
+		restoreGoal(ctx.sessionManager.getEntries());
+	});
+
 	pi.registerTool({
 		name: "create_goal",
 		label: "Create Goal",
@@ -86,6 +121,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 			if (params.token_budget) currentGoal = { ...currentGoal, tokenBudget: params.token_budget };
+			publishGoal(pi);
 			return { content: [{ type: "text", text: renderGoal(currentGoal) }] };
 		},
 	});
@@ -116,6 +152,7 @@ export default function (pi: ExtensionAPI) {
 		}, { description: "Goal status update input." }),
 		async execute(_id, params) {
 			const result = updateGoal(params.status, params.reason);
+			if (result.startsWith("Goal:")) publishGoal(pi);
 			return {
 				content: [{ type: "text", text: result }],
 				isError: !result.startsWith("Goal:"),
@@ -127,6 +164,7 @@ export default function (pi: ExtensionAPI) {
 		description: "Manage the current session goal: /goal [objective|done|blocked <reason>|clear]",
 		handler: async (args, ctx) => {
 			const input = args.trim();
+			const previousGoal = renderGoal(currentGoal);
 			let result: string;
 
 			if (!input) {
@@ -156,6 +194,7 @@ export default function (pi: ExtensionAPI) {
 				result = createGoal(input);
 			}
 
+			if (previousGoal !== renderGoal(currentGoal)) publishGoal(pi);
 			ctx.ui.notify(result, result.startsWith("Goal:") || result === "Goal cleared." ? "info" : "warning");
 		},
 	});
