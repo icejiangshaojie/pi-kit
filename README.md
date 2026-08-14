@@ -17,7 +17,7 @@ pi install git:github.com/icejiang/pi-kit
 | 常规编码 | `pi` |
 | MCP 搜索、浏览器、模拟器服务 | `PI_MCP_BRIDGE=1 pi` |
 | 委派 scout / planner / worker / reviewer | `PI_SUBAGENTS=1 pi` |
-| GLM 配额 footer 与 `/usage` | `PI_USAGE_STATS=1 pi` |
+| GLM 配额 footer 与 `/usage` | 默认启用（禁用：`PI_USAGE_STATS=0 pi`） |
 | Limao UI 对齐工具（项目扩展） | `PI_UI_ALIGN=1 pi` |
 
 可组合多个变量，例如 `PI_MCP_BRIDGE=1 PI_SUBAGENTS=1 pi`。
@@ -33,6 +33,6 @@ pi install git:github.com/icejiang/pi-kit
 
 ## 外部依赖（按需）
 
-- **GLM 用量监控**：仅在 `PI_USAGE_STATS=1` 时读取本机 provider 配置并请求配额。apiKey 支持 `!security …` keychain 前缀，密钥永不入仓。
+- **GLM 用量监控**：默认启用；设 `PI_USAGE_STATS=0` 可关闭。读取本机 provider 配置并请求配额，apiKey 支持 `!security …` keychain 前缀，密钥永不入仓。
 - **浏览器自动化**：ego-browser skill 位于 `~/.agents/skills/ego-browser`（跨 harness 共享），CLI：`~/.local/bin/ego-browser`。
 - 凭证/本地配置（`auth.json` / `models.json` / `mcp.json` / `settings.json`）一律不进本仓库。

@@ -172,7 +172,9 @@ function renderDetail(res: FetchResult): string {
 }
 
 export default function (pi: ExtensionAPI) {
-	if (process.env.PI_USAGE_STATS !== "1") return;
+	// 防回归：默认注册（footer + /usage），禁用必须显式 PI_USAGE_STATS=0。
+	// 曾两次被改为 opt-in（需 PI_USAGE_STATS=1），导致用户侧“工具凭空消失”，勿再反转。
+	if (process.env.PI_USAGE_STATS === "0") return;
 
 	const agentDir = process.env.PI_AGENT_DIR ?? join(process.env.HOME ?? "~", ".pi", "agent");
 
