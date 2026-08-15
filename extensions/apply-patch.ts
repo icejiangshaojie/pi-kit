@@ -20,7 +20,8 @@
  * *** End Patch
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { keyHint, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, renameSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -308,6 +309,34 @@ export default function (pi: ExtensionAPI) {
 				content: [{ type: "text", text: results.join("\n") }],
 				isError: failed,
 			};
+		},
+		renderCall(args, theme) {
+			const operations = parsePatch(args.patch);
+			const files = operations.slice(0, 3).map((operation) => `${operation.kind} ${operation.path}`).join(" · ");
+			const more = operations.length > 3 ? ` +${operations.length - 3} more` : "";
+			return new Text(
+				theme.fg("toolTitle", "▸ 意图：") + theme.fg("text", "应用聚焦的代码修改") +
+				`\n  ${theme.fg("muted", `工具：apply_patch · ${operations.length} 个文件操作${files ? ` · ${files}${more}` : ""}`)}`,
+				0,
+				0,
+			);
+		},
+		renderResult(result, { expanded, isPartial }, theme, context) {
+			if (isPartial) return new Text(theme.fg("warning", "  结果：正在应用修改..."), 0, 0);
+			const output = result.content.filter((item) => item.type === "text").map((item) => item.text ?? "").join("\n").trim();
+			const lines = output.split("\n").filter(Boolean);
+			const failed = result.isError === true || context.isError;
+			let text = failed
+				? theme.fg("error", `✗ 结果：${lines.find((line) => line.startsWith("✗")) ?? lines[0] ?? "修改失败"}`)
+				: theme.fg("success", `✓ 结果：已完成 ${lines.length} 个文件操作`);
+			if (expanded) {
+				const patch = typeof context.args?.patch === "string" ? context.args.patch : "(patch unavailable)";
+				text += `\n${theme.fg("muted", "Patch")}\n${theme.fg("toolOutput", patch)}`;
+				text += `\n${theme.fg("muted", "Result details")}\n${theme.fg("toolOutput", output || "(no output)")}`;
+			} else {
+				text += `\n  ${theme.fg("muted", keyHint("app.tools.expand", "查看完整 patch 与结果"))}`;
+			}
+			return new Text(text, 0, 0);
 		},
 	});
 }

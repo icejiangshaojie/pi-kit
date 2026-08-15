@@ -43,6 +43,15 @@ interface Snapshot {
 }
 type FetchResult = { ok: true; snap: Snapshot } | { ok: false; error: string };
 
+interface CacheTurn {
+	at?: string;
+	input: number;
+	cacheRead: number;
+	cacheWrite: number;
+	provider?: string;
+	model?: string;
+}
+
 let cached: { t: number; res: FetchResult } | null = null;
 
 function resolveBigModelKey(agentDir: string): { key: string; baseUrl: string } | null {
@@ -171,6 +180,88 @@ function renderDetail(res: FetchResult): string {
 	return lines.join("\n");
 }
 
+function usageNumber(value: unknown): number {
+	return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function cacheTurns(entries: unknown[]): CacheTurn[] {
+	const turns: CacheTurn[] = [];
+	for (const entry of entries) {
+		const record = entry as {
+			type?: unknown;
+			timestamp?: unknown;
+			message?: {
+				role?: unknown;
+				provider?: unknown;
+				model?: unknown;
+				usage?: {
+					input?: unknown;
+					cacheRead?: unknown;
+					cacheWrite?: unknown;
+					cacheWrite1h?: unknown;
+				};
+			};
+		};
+		if (record.type !== "message" || record.message?.role !== "assistant" || !record.message.usage) continue;
+		const usage = record.message.usage;
+		const input = usageNumber(usage.input);
+		const cacheRead = usageNumber(usage.cacheRead);
+		if (input === 0 && cacheRead === 0) continue;
+		turns.push({
+			...(typeof record.timestamp === "string" ? { at: record.timestamp } : {}),
+			input,
+			cacheRead,
+			cacheWrite: usageNumber(usage.cacheWrite) + usageNumber(usage.cacheWrite1h),
+			...(typeof record.message.provider === "string" ? { provider: record.message.provider } : {}),
+			...(typeof record.message.model === "string" ? { model: record.message.model } : {}),
+		});
+	}
+	return turns;
+}
+
+function tokenCount(value: number): string {
+	return value >= 1000 ? `${Math.round(value / 100) / 10}k` : String(value);
+}
+
+function cacheRate(turn: CacheTurn): number | undefined {
+	const total = turn.input + turn.cacheRead;
+	return total > 0 ? turn.cacheRead / total : undefined;
+}
+
+function timeGap(current: CacheTurn, previous: CacheTurn | undefined): string {
+	if (!current.at || !previous?.at) return "-";
+	const elapsed = Date.parse(current.at) - Date.parse(previous.at);
+	if (!Number.isFinite(elapsed) || elapsed < 0) return "-";
+	const seconds = Math.round(elapsed / 1000);
+	return seconds >= 3600 ? `${Math.floor(seconds / 3600)}h${Math.round((seconds % 3600) / 60)}m` : seconds >= 60 ? `${Math.round(seconds / 60)}m` : `${seconds}s`;
+}
+
+export function renderCacheAudit(entries: unknown[]): string {
+	const turns = cacheTurns(entries);
+	if (turns.length === 0) return "Cache audit: this session has no provider usage records yet.";
+	const recent = turns.slice(-12);
+	const totalInput = recent.reduce((sum, turn) => sum + turn.input, 0);
+	const totalCached = recent.reduce((sum, turn) => sum + turn.cacheRead, 0);
+	const totalWritten = recent.reduce((sum, turn) => sum + turn.cacheWrite, 0);
+	const weightedRate = totalInput + totalCached > 0 ? totalCached / (totalInput + totalCached) : 0;
+	const coldTurns = recent.filter((turn) => (cacheRate(turn) ?? 0) < 0.1).length;
+	const lines = [
+		`Cache audit | last ${recent.length} provider turns`,
+		`Weighted hit: ${Math.round(weightedRate * 100)}% | cache read ${tokenCount(totalCached)} / total ${tokenCount(totalInput + totalCached)}${totalWritten > 0 ? ` | cache write ${tokenCount(totalWritten)}` : ""}`,
+		`Low-cache turns: ${coldTurns}/${recent.length} (TTL expiry, compaction, routing, or context changes require comparison; this is not a cost estimate).`,
+		"Recent:",
+	];
+	for (const [index, turn] of recent.entries()) {
+		const previous = recent[index - 1];
+		const rate = cacheRate(turn);
+		const route = [turn.provider, turn.model].filter(Boolean).join("/");
+		lines.push(
+			`${index + 1}. +${timeGap(turn, previous)} | ${rate === undefined ? "-" : `${Math.round(rate * 100)}%`} | in ${tokenCount(turn.input)} cache ${tokenCount(turn.cacheRead)}${route ? ` | ${route}` : ""}`,
+		);
+	}
+	return lines.join("\n");
+}
+
 export default function (pi: ExtensionAPI) {
 	// 防回归：默认注册（footer + /usage），禁用必须显式 PI_USAGE_STATS=0。
 	// 曾两次被改为 opt-in（需 PI_USAGE_STATS=1），导致用户侧“工具凭空消失”，勿再反转。
@@ -227,8 +318,12 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("usage", {
-		description: "查看 GLM Coding Plan 用量（5h 窗口 / 周 / MCP 次数 / 套餐等级 / 有效期）",
-		handler: async (_args, ctx) => {
+		description: "查看 GLM 用量；/usage cache 查看本会话 provider cache 诊断",
+		handler: async (args, ctx) => {
+			if (args.trim() === "cache") {
+				ctx.ui.notify(renderCacheAudit(ctx.sessionManager.getEntries()), "info");
+				return;
+			}
 			const res = await getSnapshot(agentDir, true);
 			ctx.ui.notify(renderDetail(res), "info");
 		},

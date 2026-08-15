@@ -171,7 +171,7 @@ export default function (pi: ExtensionAPI) {
 	let settleTimer: ReturnType<typeof setTimeout> | undefined;
 	let running = false;
 
-	async function dispatch(title: string, body: string, ctx: { cwd: string }) {
+	async function dispatch(title: string, body: string) {
 		if (running) return; // 避免重复通知
 		running = true;
 		try {
@@ -195,22 +195,12 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
-	pi.on("agent_settled", async (event, ctx) => {
+	pi.on("agent_settled", async () => {
 		// 短暂延迟：如果用户在 2 秒内开始输入则跳过通知
 		if (settleTimer) clearTimeout(settleTimer);
-		// 先捕获纯字符串：session 替换（/fork /new /resume）走 dispose() 只 invalidate
-		// 不发 session_shutdown，本 timer 不保证被清理，回调里再碰 ctx 会抛
-		// "ctx is stale after session replacement or reload"
-		const cwd = ctx.cwd;
 		settleTimer = setTimeout(async () => {
-			// 若 agent 又开始忙了（不应该，settled 后不会再动），保险检查
-			try {
-				if (!ctx.isIdle()) return;
-			} catch {
-				return; // ctx 已随 session 替换/退出失效，放弃本次通知
-			}
 			// 从 event 提取不了 messages（agent_settled 没有 payload），用 agent_end 存的状态
-			dispatch(lastSummary.title, lastSummary.body, { cwd });
+			await dispatch(lastSummary.title, lastSummary.body);
 		}, 2000);
 	});
 
@@ -224,9 +214,9 @@ export default function (pi: ExtensionAPI) {
 	// 手动测试命令: /notify [自定义文本]
 	pi.registerCommand("notify", {
 		description: "测试通知通道 (发送测试消息到所有已启用通道)",
-		handler: async (args, ctx) => {
+		handler: async (args) => {
 			const text = args.trim() || "这是一条测试通知";
-			await dispatch(`pi 测试: ${text}`, text, ctx);
+			await dispatch(`pi 测试: ${text}`, text);
 		},
 	});
 
